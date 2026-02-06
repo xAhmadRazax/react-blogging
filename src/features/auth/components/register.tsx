@@ -82,7 +82,7 @@ const Register = () => {
     <section className="border w-11/12 md:w-120 px-8 py-12 my-8 rounded-2xl shadow-xl transition-all relative ">
       <Link
         href=".."
-        className="absolute top-4 left-4 shadow-neutral-200 shadow-xl border rounded-full "
+        className="absolute top-4 left-4 shadow-neutral-200 shadow border border-neutral-50 rounded-full "
       >
         <ArrowLeft className="size-8 stroke-neutral-500" />
       </Link>
@@ -107,6 +107,7 @@ const Register = () => {
           <Input
             type="email"
             title="email"
+            placeholder="Your name"
             className={`ring-1 ring-transparent ${
               errors.email ? "border-red-400 focus-visible:ring-red-400" : ""
             }`}
@@ -119,6 +120,7 @@ const Register = () => {
           <Input
             type="text"
             title="Name"
+            placeholder="you@email.com"
             className={`ring-1 ring-transparent  ${
               errors.name ? "border-red-400 focus-visible:ring-red-400" : ""
             }`}
@@ -133,6 +135,7 @@ const Register = () => {
             <Input
               type="password"
               title="Password"
+              placeholder="******"
               className={`ring-1 ring-transparent ${
                 errors.password
                   ? "border-red-400 focus-visible:ring-red-400"
@@ -149,6 +152,7 @@ const Register = () => {
             <Input
               type="password"
               title="ConfirmPassword"
+              placeholder="******"
               className={`ring-1 ring-transparent ${
                 errors.confirmPassword
                   ? "border-red-400 focus-visible:ring-red-400"

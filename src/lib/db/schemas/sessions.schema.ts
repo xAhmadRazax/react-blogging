@@ -48,7 +48,9 @@ export const sessions = pgTable(
     // hashed token
     tokenHash: text("token_hash").notNull(),
     tokenFamily: uuid("token_family").notNull(),
-
+    browser: text("browser_info"),
+    os: text("os_info"),
+    osVersion: text("os_version"),
     // detect if token is used is reused.
     isRevoked: boolean("is_revoked").default(false).notNull(),
     isUsed: boolean("is_used").default(false).notNull(),

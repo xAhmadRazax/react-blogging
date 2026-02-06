@@ -43,6 +43,7 @@ function handleError(error: unknown): NextResponse {
 
   // Zod validation errors
   if (error instanceof ZodError) {
+    console.log(error);
     console.log("Zod error");
     return NextResponse.json(
       {

@@ -1,26 +1,27 @@
 import type { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { getExpiryDate } from "./date.util";
 
 export async function setAuthCookie(
+  res: NextResponse,
   cookieName: string,
   value: string,
   maxAge: number,
 ) {
   const cookieOptions = {
     httpOnly: true,
-    // sameSite: ,
+    sameSite: "lax" as const,
+    path: "/",
     secure: false,
   };
   if (process.env.NODE_ENV === "production") {
     cookieOptions.secure = true;
   }
 
-  const cookieStore = await cookies();
-
   // .cookie("accessToken", accessToken, cookieOptions)
-  cookieStore.set(cookieName, value, {
+  res.cookies.set(cookieName, value, {
     ...cookieOptions,
     maxAge,
   });
+
+  return res;
 }

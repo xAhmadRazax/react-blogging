@@ -29,7 +29,7 @@ export const registerSchema = z
 // This line gives you perfect TypeScript types automatically
 export type RegisterSchema = z.infer<typeof registerSchema>;
 
-export const LoginUserSchema = z.object({
+export const loginSchema = z.object({
   email: z
     .email("invalid Email address")
     .trim()
@@ -38,6 +38,7 @@ export const LoginUserSchema = z.object({
     .string()
     .min(8, "invalid Password, password must have at least 8 character"),
 });
+export type LoginSchema = z.infer<typeof loginSchema>;
 
 export const ForgotPasswordSchema = z.object({
   email: z

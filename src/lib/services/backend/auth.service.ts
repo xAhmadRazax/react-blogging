@@ -1,13 +1,13 @@
 import { and, eq, gt, isNull, lt } from "drizzle-orm";
 import { StatusCodes } from "http-status-codes";
-import { db } from "@/db";
-import { users } from "@/db/schema";
+import { db } from "@/lib/db/index";
+import { users } from "@/lib/db/schema";
 import { defaultFemaleAvatar, defaultMaleAvatar } from "@/lib/utils/settings";
 import { comparePassword, hashPassword } from "@/lib/utils/bcrypt.util";
 import { ApiError } from "@/lib/utils/apiError.utils";
-import { generateAccessToken } from "@/lib/utils/jwt.util";
+import { generateAccessToken, verifyJwtToken } from "@/lib/utils/jwt.util";
 import type { PublicUser, User } from "@/lib/types/user.type";
-import { sessions } from "@/db/schemas/sessions.schema";
+import { sessions } from "@/lib/db/schemas/sessions.schema";
 import { getExpiryDate } from "@/lib/utils/date.util";
 import {
   generateCryptoToken,
@@ -18,7 +18,10 @@ import {
 // import { password, SHA256 } from "bun";
 import { createHash, randomBytes } from "node:crypto";
 import { EmailService } from "@/lib/utils/Email";
-import { emailVerifications, passwordResets } from "@/db/schema";
+import { emailVerifications, passwordResets } from "@/lib/db/schema";
+import { NextRequest } from "next/server";
+import { headers } from "next/headers";
+import { getUser } from "./user.service";
 
 export async function checkIdentifierAvailabilityService({
   email,
@@ -121,61 +124,72 @@ export async function registerService(
   };
 }
 
-// export async function loginService({
-//   email,
-//   password,
-//   ip,
-//   device,
-// }: {
-//   email: string;
-//   password: string;
-//   ip: string;
-//   device: string;
-// }) {
-//   const [user] = await db
-//     .select()
-//     .from(users)
-//     .where(eq(users.email, email.toLowerCase()));
+export async function loginService({
+  email,
+  password,
+  ip,
+  device,
+  browser,
+  os,
+  osVersion,
+}: {
+  email: string;
+  password: string;
+  ip: string;
+  device: string;
+  browser: string;
+  os: string;
+  osVersion: string;
+}) {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.email, email.toLowerCase()));
 
-//   if (!user || !(await comparePassword(password, user.password))) {
-//     throw new ApiError(
-//       StatusCodes.UNAUTHORIZED,
-//       "Invalid Email or Password, please try again.",
-//     );
-//   }
+  if (!user || !(await comparePassword(password, user.password))) {
+    throw new ApiError(
+      StatusCodes.UNAUTHORIZED,
+      "Invalid Email or Password, please try again.",
+    );
+  }
 
-//   // at this point i can return user but there are 2 things first of all i need to create a jwt token and access token
+  console.log(device, browser, os, ip);
 
-//   const accessToken = generateAccessToken(user);
+  // at this point i can return user but there are 2 things first of all i need to create a jwt token and access token
 
-//   if (!process.env.REFRESH_TOKEN_EXPIRY) {
-//     throw new ApiError(
-//       StatusCodes.INTERNAL_SERVER_ERROR,
-//       "Refresh token Expiry not defined in .env",
-//     );
-//   }
+  const accessToken = generateAccessToken(user);
 
-//   const { selector, verifier, hashedVerifier } = generateRefreshTokenPair();
+  if (!process.env.REFRESH_TOKEN_EXPIRY) {
+    throw new ApiError(
+      StatusCodes.INTERNAL_SERVER_ERROR,
+      "Refresh token Expiry not defined in .env",
+    );
+  }
 
-//   const tokenExpiry = getExpiryDate(process.env.REFRESH_TOKEN_EXPIRY);
+  const { selector, verifier, hashedVerifier } = generateRefreshTokenPair();
 
-//   await db.insert(sessions).values({
-//     tokenFamily: selector,
-//     tokenHash: hashedVerifier,
-//     userId: user.id,
-//     ipAddress: ip,
-//     device,
-//     tokenExpiry: tokenExpiry,
-//   });
+  const tokenExpiry = getExpiryDate(process.env.REFRESH_TOKEN_EXPIRY);
 
-//   const { password: userPassword, ...publicUser } = user as PublicUser;
+  await db.insert(sessions).values({
+    tokenFamily: selector,
+    tokenHash: hashedVerifier,
+    userId: user.id,
+    ipAddress: ip,
+    device,
+    os,
+    browser,
+    osVersion,
+    tokenExpiry: tokenExpiry,
+  });
 
-//   return {
-//     user: publicUser,
-//     accessToken,
-//     refreshToken: `${selector}.${verifier}`,
-//   };
-// }
+  const { password: userPassword, ...publicUser } = user as PublicUser;
+
+  return {
+    user: publicUser,
+    accessToken,
+    refreshToken: `${selector}.${verifier}`,
+  };
+}
 
 // export async function forgotPasswordService(email: string, url: string) {
 //   const [user] = await db
@@ -384,211 +398,210 @@ export async function registerService(
 //   };
 // }
 
-// export async function logoutService({
-//   userId,
-//   token,
-// }: {
-//   userId: string;
-//   token: string;
-// }) {
-//   const [selector, verifier] = token.split(".");
-//   if (!selector || !verifier) return;
-//   const hashedVerifier = createHash("sha256").update(verifier).digest("hex");
-//   await db
-//     .update(sessions)
-//     .set({
-//       isRevoked: true,
-//     })
-//     .where(
-//       and(
-//         eq(sessions.userId, userId),
-//         eq(sessions.tokenFamily, selector),
-//         eq(sessions.tokenHash, hashedVerifier),
-//       ),
-//     );
-// }
+export async function logoutService({
+  userId,
+  token,
+}: {
+  userId: string;
+  token: string;
+}) {
+  if (!token) return;
+  const [selector, verifier] = token.split(".");
+  if (!selector || !verifier) return;
+  const hashedVerifier = createHash("sha256").update(verifier).digest("hex");
+  await db
+    .update(sessions)
+    .set({
+      isRevoked: true,
+    })
+    .where(
+      and(
+        eq(sessions.userId, userId),
+        eq(sessions.tokenFamily, selector),
+        eq(sessions.tokenHash, hashedVerifier),
+      ),
+    );
+}
 
-// export async function refreshTokenService({
-//   refreshToken,
-//   device,
-//   ip,
-//   resetRefreshCookieHandler,
-// }: {
-//   refreshToken: string;
-//   device: string;
-//   ip: string;
-//   resetRefreshCookieHandler: () => void;
-// }) {
-//   const [selector, verifier] = refreshToken.split(".");
-//   if (!selector || !verifier) {
-//     resetRefreshCookieHandler?.();
+export async function refreshTokenService({
+  refreshToken,
+  device,
+  ip,
+  os,
+  osVersion,
+  browser,
+}: {
+  refreshToken: string;
+  device: string;
+  ip: string;
+  os: string;
+  osVersion: string;
+  browser: string;
+}) {
+  const [selector, verifier] = refreshToken.split(".");
+  if (!selector || !verifier) {
+    throw new ApiError(
+      StatusCodes.UNAUTHORIZED,
+      "Unauthorized access to the resource.",
+    );
+  }
 
-//     throw new ApiError(
-//       StatusCodes.UNAUTHORIZED,
-//       "Unauthorized access to the resource.",
+  const hashedVerifier = encryptCryptoToken(verifier, "sha256");
 
-//     );
-//   }
+  //01 check if session exist in the db that has
+  // same selector as the refreshToken
+  // same verifierHash  as we have in the refreshToken
+  // shouldn't be revoked,
+  // shouldn't be used
+  // should'nt be expire
 
-//   const hashedVerifier = encryptCryptoToken(verifier, "sha256");
+  const [token] = await db
+    .select()
+    .from(sessions)
+    .where(
+      and(
+        eq(sessions.tokenFamily, selector),
+        eq(sessions.tokenHash, hashedVerifier),
+        eq(sessions.isRevoked, false),
+        eq(sessions.isUsed, false),
+        gt(sessions.tokenExpiry, new Date()),
+      ),
+    );
 
-//   //01 check if session exist in the db that has
-//   // same selector as the refreshToken
-//   // same verifierHash  as we have in the refreshToken
-//   // shouldn't be revoked,
-//   // shouldn't be used
-//   // should'nt be expire
+  // check if token doesnt exist or token family is being reused
 
-//   const [token] = await db
-//     .select()
-//     .from(sessions)
-//     .where(
-//       and(
-//         eq(sessions.tokenFamily, selector),
-//         eq(sessions.tokenHash, hashedVerifier),
-//         eq(sessions.isRevoked, false),
-//         eq(sessions.isUsed, false),
-//         gt(sessions.tokenExpiry, new Date()),
-//       ),
-//     );
+  if (!token) {
+    const [tokenFamily] = await db
+      .select()
+      .from(sessions)
+      .where(
+        and(
+          eq(sessions.tokenFamily, selector),
+          eq(sessions.tokenHash, hashedVerifier),
+        ),
+      );
 
-//   // check if token doesnt exist or token family is being reused
+    // if token family exist revoke all token that belongs to this family
+    await db
+      .update(sessions)
+      .set({ isRevoked: true })
+      .where(
+        and(
+          eq(sessions.tokenFamily, selector),
+          eq(sessions.tokenHash, hashedVerifier),
+        ),
+      );
 
-//   if (!token) {
-//     resetRefreshCookieHandler?.();
+    if (tokenFamily) {
+      throw new ApiError(StatusCodes.UNAUTHORIZED, "Token reuse detected");
+    }
 
-//     const [tokenFamily] = await db
-//       .select()
-//       .from(sessions)
-//       .where(
-//         and(
-//           eq(sessions.tokenFamily, selector),
-//           eq(sessions.tokenHash, hashedVerifier),
-//         ),
-//       );
+    throw new ApiError(StatusCodes.UNAUTHORIZED, "invalid Token detection.");
+  }
 
-//     // if token family exist revoke all token that belongs to this family
-//     await db
-//       .update(sessions)
-//       .set({ isRevoked: true })
-//       .where(
-//         and(
-//           eq(sessions.tokenFamily, selector),
-//           eq(sessions.tokenHash, hashedVerifier),
-//         ),
-//       );
+  // get user
 
-//     if (tokenFamily) {
-//       throw new ApiError(StatusCodes.UNAUTHORIZED, "Token reuse detected" );
-//     }
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, token.userId));
 
-//     throw new ApiError(StatusCodes.UNAUTHORIZED, "invalid Token detection." );
-//   }
+  console.log(user);
 
-//   // get user
+  // check if user exist in the db if it doesn't exist that mean user
+  // has delete its account so we need to again revoke the token
+  if (!user) {
+    await db
+      .update(sessions)
+      .set({ isRevoked: true })
+      .where(
+        and(
+          eq(sessions.tokenFamily, selector),
+          eq(sessions.tokenHash, hashedVerifier),
+        ),
+      );
 
-//   const [user] = await db
-//     .select()
-//     .from(users)
-//     .where(eq(users.id, token.userId));
+    throw new ApiError(
+      StatusCodes.UNAUTHORIZED,
+      "invalid access to the resource",
+    );
+  }
 
-//   console.log(user);
+  // check if user has changed its password after token has been issued
+  // if they have we will revoke the token family again
+  if (
+    user?.passwordChangedAt &&
+    new Date(user.passwordChangedAt).getTime() >
+      new Date(token.createdAt).getTime()
+  ) {
+    await db
+      .update(sessions)
+      .set({ isRevoked: true })
+      .where(
+        and(
+          eq(sessions.tokenFamily, selector),
+          eq(sessions.tokenHash, hashedVerifier),
+        ),
+      );
 
-//   // check if user exist in the db if it doesn't exist that mean user
-//   // has delete its account so we need to again revoke the token
-//   if (!user) {
-//     resetRefreshCookieHandler?.();
+    throw new ApiError(
+      StatusCodes.UNAUTHORIZED,
+      "Session Expired. Please login again to access this resource.",
+    );
+  }
 
-//     await db
-//       .update(sessions)
-//       .set({ isRevoked: true })
-//       .where(
-//         and(
-//           eq(sessions.tokenFamily, selector),
-//           eq(sessions.tokenHash, hashedVerifier),
-//         ),
-//       );
+  const verifierPair = generateVerifierAndHashedVerifier();
 
-//     throw new ApiError(
-//       StatusCodes.UNAUTHORIZED,
-//       "invalid access to the resource"
-//     );
-//   }
+  if (!process.env.REFRESH_TOKEN_EXPIRY) {
+    throw new ApiError(
+      StatusCodes.INTERNAL_SERVER_ERROR,
+      "Refresh token Expiry not defined in .env",
+    );
+  }
 
-//   // check if user has changed its password after token has been issued
-//   // if they have we will revoke the token family again
-//   if (
-//     user?.passwordChangedAt &&
-//     new Date(user.passwordChangedAt).getTime() >
-//       new Date(token.createdAt).getTime()
-//   ) {
-//     resetRefreshCookieHandler?.();
+  const tokenExpiry = getExpiryDate(process.env.REFRESH_TOKEN_EXPIRY);
 
-//     await db
-//       .update(sessions)
-//       .set({ isRevoked: true })
-//       .where(
-//         and(
-//           eq(sessions.tokenFamily, selector),
-//           eq(sessions.tokenHash, hashedVerifier),
-//         ),
-//       );
+  // creating new user session and linking the old session with new one
+  await db.transaction(async (tx) => {
+    // creating new user session
+    const [newSessionToken] = await tx
+      .insert(sessions)
+      .values({
+        tokenFamily: token.tokenFamily,
+        tokenHash: verifierPair.hashedVerifier,
+        tokenExpiry,
+        device,
+        ipAddress: ip,
+        os,
+        osVersion,
+        browser,
+        userId: user.id,
+      })
+      .returning();
 
-//     throw new ApiError(
-//       StatusCodes.UNAUTHORIZED,
-//       "Session Expired. Please login again to access this resource."
-//     );
-//   }
+    // creating link between old session and new session
 
-//   const verifierPair = generateVerifierAndHashedVerifier();
+    await tx
+      .update(sessions)
+      .set({
+        isUsed: true,
+        replacedBy: newSessionToken!.id,
+      })
+      .where(eq(sessions.id, token.id));
 
-//   if (!process.env.REFRESH_TOKEN_EXPIRY) {
-//     throw new ApiError(
-//       StatusCodes.INTERNAL_SERVER_ERROR,
-//       "Refresh token Expiry not defined in .env"
-//     );
-//   }
+    return {
+      newSessionToken,
+    };
+  });
 
-//   const tokenExpiry = getExpiryDate(process.env.REFRESH_TOKEN_EXPIRY);
+  // generating new access token
 
-//   // creating new user session and linking the old session with new one
-//   await db.transaction(async (tx) => {
-//     // creating new user session
-//     const [newSessionToken] = await tx
-//       .insert(sessions)
-//       .values({
-//         tokenFamily: token.tokenFamily,
-//         tokenHash: verifierPair.hashedVerifier,
-//         tokenExpiry,
-//         device,
-//         ipAddress: ip,
-//         userId: user.id,
-//       })
-//       .returning();
-
-//     // creating link between old session and new session
-
-//     await tx
-//       .update(sessions)
-//       .set({
-//         isUsed: true,
-//         replacedBy: newSessionToken!.id,
-//       })
-//       .where(eq(sessions.id, token.id));
-
-//     return {
-//       newSessionToken,
-//     };
-//   });
-
-//   // generating new access token
-
-//   const accessToken = generateAccessToken(user);
-//   return {
-//     accessToken,
-//     refreshToken: `${token.tokenFamily}.${verifierPair.verifier}`,
-//   };
-// }
+  const accessToken = generateAccessToken(user);
+  return {
+    accessToken,
+    refreshToken: `${token.tokenFamily}.${verifierPair.verifier}`,
+  };
+}
 
 // export async function verifyEmailService(token: string) {
 //   const encryptToken = encryptCryptoToken(token, "sha256");
@@ -652,3 +665,46 @@ export async function registerService(
 //     `${baseUrl}/email/verification/${verifier}`,
 //   );
 // }
+
+export const protect = async () => {
+  // 01 check if the authorization header exist
+  const headersList = await headers();
+  const accessToken = headersList.get("authorization")?.startsWith("Bearer")
+    ? headersList.get("authorization")?.split(" ")?.[1]
+    : undefined;
+
+  if (!accessToken) {
+    throw new ApiError(
+      StatusCodes.UNAUTHORIZED,
+      "Please login to access this resource",
+    );
+  }
+
+  const decodedAccessJwt = verifyJwtToken(accessToken);
+
+  // 03 check if token exist or user's id exist in token
+  if (!decodedAccessJwt || !decodedAccessJwt.id || !decodedAccessJwt.iat) {
+    throw new ApiError(StatusCodes.UNAUTHORIZED, "Token expire/invalid.");
+  }
+
+  // 04 from the decoded token check if user exists
+  const user = await getUser(decodedAccessJwt.id);
+  if (!user)
+    throw new ApiError(StatusCodes.UNAUTHORIZED, "User no longer exists");
+
+  // 05 check if the user's password has been change after the token was issued
+
+  if (
+    user?.passwordChangedAt &&
+    new Date(user.passwordChangedAt).getTime() > decodedAccessJwt.iat * 1000
+  ) {
+    throw new ApiError(
+      StatusCodes.UNAUTHORIZED,
+      "Session Expired. Please login again to access this resource.",
+    );
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { password, ...publicUser } = user;
+  return publicUser;
+};

@@ -1,7 +1,7 @@
 import { StatusCodes } from "http-status-codes";
 import jwt, { type JwtPayload } from "jsonwebtoken";
-import type { User } from "../types/user.type.js";
-import { ApiError } from "./apiError.utils.js";
+import type { User } from "../types/user.type";
+import { ApiError } from "@/lib/utils/apiError.utils";
 
 export const generateAccessAndRefreshToken = (
   user: User,
