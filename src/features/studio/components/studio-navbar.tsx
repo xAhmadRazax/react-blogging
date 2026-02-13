@@ -1,19 +1,12 @@
 "use client";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { User } from "@/lib/types/user.type";
-
 import { Menu, NotebookPen } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import UserNav from "./user-nav";
+import UserNav from "@/features/home/components/user-nav";
 
-const HomeNavbar = ({ user }: { user: User | null }) => {
-  // const HomeNavbar = () => {
-  // const { user } = useUser();
-  // if (isLoggingOut) {
-  //   return <Spinner />;
-  // }
-  console.log(user, "user");
+const StudioNavbar = ({ user }: { user: User | null }) => {
   return (
     <header className=" flex justify-between h-full  col-span-full px-4 py-2  row-start-1 row-end z-20 shadow ">
       <div className="flex items-center gap-3 md:gap-5">
@@ -55,4 +48,4 @@ const HomeNavbar = ({ user }: { user: User | null }) => {
   );
 };
 
-export default HomeNavbar;
+export default StudioNavbar;

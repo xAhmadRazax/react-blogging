@@ -35,11 +35,62 @@ function isDatabaseError(error: unknown): error is DatabaseError {
     typeof error["cause"].code === "string"
   );
 }
+// ❌ PROBLEM: JWT errors return NO structured errors object
+function handleJWTError(err: Error) {
+  return NextResponse.json(
+    {
+      message:
+        process.env.NODE_ENV === "production"
+          ? "Unauthorized access. Please login."
+          : "Invalid Token, Please Login again",
+      stack: err?.stack,
+    },
+    { status: StatusCodes.UNAUTHORIZED },
+  );
+}
+// ❌ PROBLEM: Same issue - no structured errors
+function handleJWTExpiredError(err: Error) {
+  return NextResponse.json(
+    {
+      message:
+        process.env.NODE_ENV === "production"
+          ? "Unauthorized access. Please login."
+          : "Invalid Token, Please Login again",
+      stack: err?.stack,
+    },
+    { status: StatusCodes.UNAUTHORIZED },
+  );
+}
+// ❌ PROBLEM: No structured errors
+function handleJWTNotBeforeError(err: Error) {
+  return NextResponse.json(
+    {
+      message:
+        process.env.NODE_ENV === "production"
+          ? "Unauthorized access. Please login."
+          : "Invalid Token, Please Login again",
+      stack: err?.stack,
+    },
+    { status: StatusCodes.UNAUTHORIZED },
+  );
+}
 
 // Centralized error handler with proper typing
 function handleError(error: unknown): NextResponse {
   // console.log(error["cause"]);
   // console.error("🌐 Server Error:", error);
+
+  console.log(typeof error, "error type");
+  // jwt errors
+  if ((error as Error).name === "TokenExpiredError") {
+    return handleJWTExpiredError(error as Error);
+  }
+  if ((error as Error).name === "JsonWebTokenError") {
+    return handleJWTError(error as Error);
+  }
+  if ((error as Error).name === "NotBeforeError") {
+    return handleJWTNotBeforeError(error as Error);
+  }
 
   // Zod validation errors
   if (error instanceof ZodError) {

@@ -20,7 +20,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { EmailService } from "@/lib/utils/Email";
 import { emailVerifications, passwordResets } from "@/lib/db/schema";
 import { NextRequest } from "next/server";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { getUser } from "./user.service";
 
 export async function checkIdentifierAvailabilityService({
@@ -438,6 +438,7 @@ export async function refreshTokenService({
   osVersion: string;
   browser: string;
 }) {
+  console.log("refreshing token 4.....", device, ip, os, osVersion, browser);
   const [selector, verifier] = refreshToken.split(".");
   if (!selector || !verifier) {
     throw new ApiError(
@@ -445,8 +446,10 @@ export async function refreshTokenService({
       "Unauthorized access to the resource.",
     );
   }
-
+  console.log("refreshing token 4.....");
   const hashedVerifier = encryptCryptoToken(verifier, "sha256");
+  console.log(hashedVerifier);
+  console.log("refreshing token 5.....");
 
   //01 check if session exist in the db that has
   // same selector as the refreshToken
@@ -454,6 +457,7 @@ export async function refreshTokenService({
   // shouldn't be revoked,
   // shouldn't be used
   // should'nt be expire
+  console.log("refreshing token 6.....");
 
   const [token] = await db
     .select()
@@ -467,6 +471,8 @@ export async function refreshTokenService({
         gt(sessions.tokenExpiry, new Date()),
       ),
     );
+  console.log(token, "Token", hashedVerifier);
+  console.log("refreshing token 7.....");
 
   // check if token doesnt exist or token family is being reused
 
@@ -481,6 +487,9 @@ export async function refreshTokenService({
         ),
       );
 
+    console.log(
+      "refreshing token 8..... token family exist revoke all token that belongs to this family",
+    );
     // if token family exist revoke all token that belongs to this family
     await db
       .update(sessions)
@@ -491,13 +500,14 @@ export async function refreshTokenService({
           eq(sessions.tokenHash, hashedVerifier),
         ),
       );
-
+    console.log("refreshing token 9.....");
     if (tokenFamily) {
       throw new ApiError(StatusCodes.UNAUTHORIZED, "Token reuse detected");
     }
 
     throw new ApiError(StatusCodes.UNAUTHORIZED, "invalid Token detection.");
   }
+  console.log("refreshing token 10.....");
 
   // get user
 
@@ -505,8 +515,7 @@ export async function refreshTokenService({
     .select()
     .from(users)
     .where(eq(users.id, token.userId));
-
-  console.log(user);
+  console.log("refreshing token 10.1 .....");
 
   // check if user exist in the db if it doesn't exist that mean user
   // has delete its account so we need to again revoke the token
@@ -521,12 +530,13 @@ export async function refreshTokenService({
         ),
       );
 
+    console.log("refreshing token 11.....");
     throw new ApiError(
       StatusCodes.UNAUTHORIZED,
       "invalid access to the resource",
     );
   }
-
+  console.log("refreshing token 12.....");
   // check if user has changed its password after token has been issued
   // if they have we will revoke the token family again
   if (
@@ -534,6 +544,7 @@ export async function refreshTokenService({
     new Date(user.passwordChangedAt).getTime() >
       new Date(token.createdAt).getTime()
   ) {
+    console.log("refreshing token 13.....");
     await db
       .update(sessions)
       .set({ isRevoked: true })
@@ -543,14 +554,15 @@ export async function refreshTokenService({
           eq(sessions.tokenHash, hashedVerifier),
         ),
       );
-
+    console.log("refreshing token 14.....");
     throw new ApiError(
       StatusCodes.UNAUTHORIZED,
       "Session Expired. Please login again to access this resource.",
     );
   }
-
+  console.log("refreshing token 15.....");
   const verifierPair = generateVerifierAndHashedVerifier();
+  console.log("refreshing token 16.....");
 
   if (!process.env.REFRESH_TOKEN_EXPIRY) {
     throw new ApiError(
@@ -558,9 +570,10 @@ export async function refreshTokenService({
       "Refresh token Expiry not defined in .env",
     );
   }
+  console.log("refreshing token 17.....");
 
   const tokenExpiry = getExpiryDate(process.env.REFRESH_TOKEN_EXPIRY);
-
+  console.log("refreshing token 18.....");
   // creating new user session and linking the old session with new one
   await db.transaction(async (tx) => {
     // creating new user session
@@ -570,17 +583,18 @@ export async function refreshTokenService({
         tokenFamily: token.tokenFamily,
         tokenHash: verifierPair.hashedVerifier,
         tokenExpiry,
-        device,
+        device: device || token.device,
         ipAddress: ip,
-        os,
-        osVersion,
-        browser,
+        os: os || token.os,
+        osVersion: osVersion || token.osVersion,
+        browser: browser || token.browser,
         userId: user.id,
       })
       .returning();
 
     // creating link between old session and new session
 
+    debugger;
     await tx
       .update(sessions)
       .set({
@@ -669,9 +683,11 @@ export async function refreshTokenService({
 export const protect = async () => {
   // 01 check if the authorization header exist
   const headersList = await headers();
+  const cookieStore = await cookies();
+
   const accessToken = headersList.get("authorization")?.startsWith("Bearer")
     ? headersList.get("authorization")?.split(" ")?.[1]
-    : undefined;
+    : cookieStore.get("accessToken")?.value;
 
   if (!accessToken) {
     throw new ApiError(

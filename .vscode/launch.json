@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Bun: Debug Server-Side",
+      "type": "node",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["--inspect-wait", "run", "dev"],
+      "attachSimplePort": 6499,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Next.js: Debug Client-Side",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Bun: Full Stack",
+      "configurations": ["Bun: Debug Server-Side", "Next.js: Debug Client-Side"]
+    }
+  ]
+}

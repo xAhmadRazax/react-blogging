@@ -15,12 +15,11 @@ export function useLogout() {
   } = useMutation({
     mutationFn: logout,
     onSuccess: () => {
-      //   queryClient.removeQueries({ queryKey: ["user"] });
       queryClient.clear();
-      //   queryClient.invalidateQueries({ exact: true });
       setAccessToken(null);
 
-      //   router.replace("/");
+      router.replace("/");
+      router.refresh();
     },
     onError: (err) => {
       console.log(error);

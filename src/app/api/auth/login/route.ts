@@ -1,7 +1,7 @@
 import { loginService } from "@/lib/services/backend/auth.service";
 import { ApiResponse } from "@/lib/utils/ApiResponse";
 import { catchAsync } from "@/lib/utils/apiWrapper.util";
-import { setAuthCookie } from "@/lib/utils/cookies.util";
+import { setAuthCookies } from "@/lib/utils/cookies.util";
 import { ms } from "@/lib/utils/util";
 import { loginSchema, registerSchema } from "@/lib/zodSchemas/auth.schema";
 import { StatusCodes } from "http-status-codes";
@@ -33,22 +33,28 @@ export const POST = catchAsync(async (req: NextRequest, context) => {
     osVersion: os.version || "",
   });
 
-  const refreshExpiry = process.env.REFRESH_TOKEN_EXPIRY;
-  if (!refreshExpiry) {
+  const refreshTokenExpiry = process.env.REFRESH_TOKEN_EXPIRY;
+  const accessTokenExpiry = process.env.ACCESS_TOKEN_EXPIRY;
+  if (!refreshTokenExpiry || !accessTokenExpiry) {
     throw new ApiError(
       StatusCodes.INTERNAL_SERVER_ERROR,
-      "refresh Expiry is not define",
+      "refresh or access Expiry is not define",
     );
   }
 
-  const response = setAuthCookie(
-    ApiResponse.sendJSON(StatusCodes.OK, "user login successfully", {
-      user,
-      accessToken,
-    }),
-    "refreshToken",
-    refreshToken,
-    ms(process.env.REFRESH_TOKEN_EXPIRY!),
-  );
-  return response;
+  const res = ApiResponse.sendJSON(StatusCodes.OK, "user login successfully", {
+    user,
+    accessToken,
+  });
+
+  return setAuthCookies(res, {
+    accessToken: {
+      value: accessToken,
+      maxAge: ms(accessTokenExpiry), // e.g., 15 minutes
+    },
+    refreshToken: {
+      value: refreshToken,
+      maxAge: ms(refreshTokenExpiry), // e.g., 7 days
+    },
+  });
 });

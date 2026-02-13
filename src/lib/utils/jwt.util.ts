@@ -102,15 +102,17 @@ export const verifyJwtToken = (
     ? process?.env?.REFRESH_TOKEN_SECRET
     : process?.env?.ACCESS_TOKEN_SECRET;
 
+  console.log(jwtSecret, "jwtSecret");
+
   if (!jwtSecret) {
     throw new ApiError(
       StatusCodes.INTERNAL_SERVER_ERROR,
       `${isRefreshToken ? "Refresh" : "Access"}_TOKEN_SECRET variable is missing in environment.`,
     );
   }
+  console.log(jwtSecret, "jwtSecret");
 
   const decodedJWT = jwt.verify(token, jwtSecret) as JwtPayload;
-
   return decodedJWT;
 };
 

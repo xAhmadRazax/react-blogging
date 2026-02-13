@@ -1,24 +1,25 @@
-import {
-  loginService,
-  refreshTokenService,
-} from "@/lib/services/backend/auth.service";
+import { refreshTokenService } from "@/lib/services/backend/auth.service";
 import { ApiResponse } from "@/lib/utils/ApiResponse";
 import { catchAsync } from "@/lib/utils/apiWrapper.util";
-import { setAuthCookie } from "@/lib/utils/cookies.util";
+import { clearAuthCookies, setAuthCookies } from "@/lib/utils/cookies.util";
 import { ms } from "@/lib/utils/util";
-import { loginSchema, registerSchema } from "@/lib/zodSchemas/auth.schema";
 import { StatusCodes } from "http-status-codes";
 import { ApiError } from "next/dist/server/api-utils";
 import { NextResponse, NextRequest, userAgent } from "next/server";
 import { cookies } from "next/headers";
 
 export const POST = catchAsync(async (req: NextRequest, context) => {
+  console.log("refreshing token.....");
   try {
     const cookieStore = await cookies();
+    const body = await req.json();
 
     const refreshTokenOb = cookieStore.get("refreshToken");
 
-    if (!refreshTokenOb?.value) {
+    const token = refreshTokenOb?.value || body.refreshToken;
+    console.log(token, "token objecT?");
+
+    if (!token) {
       throw new ApiError(
         StatusCodes.UNAUTHORIZED,
         "Session expire please login again.",
@@ -32,17 +33,20 @@ export const POST = catchAsync(async (req: NextRequest, context) => {
     // 2. Get high-level Device info using Next.js built-in helper
     const { device, browser, os } = userAgent(req);
 
-    const refreshExpiry = process.env.REFRESH_TOKEN_EXPIRY;
-    if (!refreshExpiry) {
+    console.log("refreshing token 1.....");
+    const refreshTokenExpiry = process.env.REFRESH_TOKEN_EXPIRY;
+    const accessTokenExpiry = process.env.ACCESS_TOKEN_EXPIRY;
+    if (!refreshTokenExpiry || !accessTokenExpiry) {
       throw new ApiError(
         StatusCodes.INTERNAL_SERVER_ERROR,
         "refresh Expiry is not define",
       );
     }
+    console.log("refreshing token 2.....");
 
     //   console.log(device, os, browser);
     const { refreshToken, accessToken } = await refreshTokenService({
-      refreshToken: refreshTokenOb!.value,
+      refreshToken: token,
 
       ip,
       device: device.type || "desktop",
@@ -50,28 +54,30 @@ export const POST = catchAsync(async (req: NextRequest, context) => {
       os: os.name || "",
       osVersion: os.version || "",
     });
-    console.log("im here 13");
-    const response = setAuthCookie(
-      ApiResponse.sendJSON(StatusCodes.OK, "user login successfully", {
-        accessToken,
-      }),
 
-      "refreshToken",
-      refreshToken,
-      ms(process.env.REFRESH_TOKEN_EXPIRY!),
+    const res = ApiResponse.sendJSON(
+      StatusCodes.OK,
+      "refresh token rotate successfully",
+      {
+        accessToken,
+        refreshToken,
+      },
     );
-    console.log("im here 14");
-    return response;
+
+    return setAuthCookies(res, {
+      accessToken: {
+        value: accessToken,
+        maxAge: ms(accessTokenExpiry),
+      },
+      refreshToken: {
+        value: refreshToken,
+        maxAge: ms(refreshTokenExpiry),
+      },
+    });
   } catch (error) {
     if (error instanceof ApiError) {
-      const response = setAuthCookie(
-        ApiResponse.sendJSON(error.statusCode, error.message),
-        "refreshToken",
-        "",
-        0,
-      );
-
-      return response;
+      const response = ApiResponse.sendJSON(error.statusCode, error.message);
+      return clearAuthCookies(response);
     }
 
     return NextResponse.json(
